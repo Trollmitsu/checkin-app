@@ -1,98 +1,104 @@
-// server.js
-const express   = require("express");
-const mongoose  = require("mongoose");
-const sqlite3   = require("sqlite3").verbose();
-const { Parser }= require("json2csv");
-const cors      = require("cors");
-const dotenv    = require("dotenv");
-const path      = require("path");
+// checkin-app/backend/server.js
+const express       = require("express");
+const cors          = require("cors");
+const dotenv        = require("dotenv");
+const path          = require("path");
+const sqlite3       = require("sqlite3").verbose();
+const authRoutes    = require("./routes/auth");
+const userRoutes    = require("./routes/users");
+const verifyToken   = require("./middleware/auth"); // your JWT middleware
 
 dotenv.config();
+
 const app  = express();
 const PORT = process.env.PORT || 8000;
 
-// ─── Middleware ──────────────────────────────────────────────────
+// ─── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json()); // parse application/json
+app.use(express.json());
+app.use("/uploads", express.static(path.join(__dirname, "uploads"))); // if you serve videos/images
 
-// ─── 1) MongoDB: Auth & Users ───────────────────────────────────
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology:true,
-})
-.then(() => console.log("✅ MongoDB connected"))
-.catch(err => console.error("❌ MongoDB error:", err));
+// ─── AUTH ROUTES (public) ────────────────────────────────────────────────────
+app.use("/api/auth", authRoutes);
 
-// mount existing routes
-app.use("/api/auth",  require("./routes/auth"));
-app.use("/api/users", require("./routes/users"));
+// ─── USER ROUTES (protected) ─────────────────────────────────────────────────
+app.use("/api/users", verifyToken, userRoutes);
 
-// ─── 2) SQLite: Checkins ──────────────────────────────────────────
+// ─── SQLITE SETUP ─────────────────────────────────────────────────────────────
 const dbPath = path.join(__dirname, "checkins.db");
-const db     = new sqlite3.Database(dbPath);
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS checkins (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      timestamp TEXT NOT NULL
-    )
-  `);
+const db     = new sqlite3.Database(dbPath, err => {
+  if (err) console.error("❌ SQLite error:", err);
+  else     console.log("✅ SQLite connected:", dbPath);
 });
 
-// GET all checkins
-app.get("/api/checkin", (req, res) => {
-  db.all("SELECT * FROM checkins ORDER BY timestamp DESC", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+// Ensure table exists
+db.run(`
+  CREATE TABLE IF NOT EXISTS checkins (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT    NOT NULL,
+    timestamp TEXT    NOT NULL
+  )
+`);
+
+// ─── CHECK-IN ROUTES (protected) ──────────────────────────────────────────────
+
+// 1) All check-ins (admin)
+app.get("/api/checkin", verifyToken, (req, res) => {
+  db.all(
+    "SELECT * FROM checkins ORDER BY timestamp DESC",
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
 });
 
-// POST new checkin (max 1 per person per calendar-day)
-app.post("/api/checkin", (req, res) => {
+// 2) Only the logged-in user’s own check-ins
+app.get("/api/checkin/me", verifyToken, (req, res) => {
+  // We signed the JWT with { name: user.name, ... }
+  const userName = req.user.name;
+  db.all(
+    "SELECT * FROM checkins WHERE name = ? ORDER BY timestamp DESC",
+    [userName],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+// 3) Create a new check-in (admin or self)
+app.post("/api/checkin", verifyToken, (req, res) => {
   const { name, timestamp } = req.body;
   if (!name || !timestamp) {
-    return res.status(400).json({ message: "Name and timestamp required" });
+    return res.status(400).json({ message: "Name & timestamp required" });
   }
 
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-
+  // Prevent multiple same-day check-ins
+  const dateOnly = timestamp.split("T")[0];
   db.get(
     "SELECT 1 FROM checkins WHERE name = ? AND DATE(timestamp) = ?",
-    [name, today],
+    [name, dateOnly],
     (err, row) => {
       if (err) return res.status(500).json({ message: "DB error" });
-      if (row) {
-        return res.status(400).json({ message: "Already checked in today." });
-      }
+      if (row) return res.status(400).json({ message: "Already checked in today" });
+
       db.run(
         "INSERT INTO checkins (name, timestamp) VALUES (?, ?)",
         [name, timestamp],
-        function(err) {
+        function (err) {
           if (err) return res.status(500).json({ message: "Insert error" });
+          // Log to console
           console.log(`📌 Incheckad: ${name} @ ${timestamp}`);
-          res.status(200).json({ id: this.lastID, name, timestamp });
+          res.json({ id: this.lastID, name, timestamp });
         }
       );
     }
   );
 });
 
-// GET CSV-export
-app.get("/api/checkin/export", (req, res) => {
-  db.all("SELECT * FROM checkins ORDER BY timestamp DESC", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-
-    const fields = ["id", "name", "timestamp"];
-    const parser = new Parser({ fields });
-    const csv    = parser.parse(rows);
-
-    res.header("Content-Type", "text/csv");
-    res.attachment("checkins.csv");
-    res.send(csv);
-  });
-});
-
+// ─── START SERVER ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 Backend-server körs på http://localhost:${PORT}`);
 });

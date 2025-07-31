@@ -1,25 +1,30 @@
+// src/components/ExportCSVButton.jsx
 import React from "react";
+import { fetchCheckins } from "../utils/api.js";
 
-export default function ExportCSVButton() {
-  const handleClick = () => {
-    // Öppnar en ny flik och laddar ner CSV-filen
-    window.open("http://localhost:8000/api/checkin/export", "_blank");
-  };
+export default function ExportCSVButton({ style }) {
+  async function handleExport() {
+    const data = await fetchCheckins();
+    const csv  = [
+      ["ID","Name","Timestamp"],
+      ...data.map(({id,name,timestamp}) => [id,name,timestamp])
+    ]
+      .map(row => row.map(val => `"${val}"`).join(","))
+      .join("\n");
+
+    // Trigger download
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "checkins.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
-    <button
-      onClick={handleClick}
-      style={{
-        padding: "8px 16px",
-        backgroundColor: "#16a34a",
-        color: "white",
-        border: "none",
-        borderRadius: "4px",
-        cursor: "pointer",
-        marginLeft: "1rem"
-      }}
-    >
-      📥 Export CSV
+    <button onClick={handleExport} style={style}>
+      Export CSV
     </button>
   );
 }
