@@ -1,38 +1,62 @@
-// routes/checkin.js
+// checkin-app/backend/routes/checkin.js
 const express = require("express");
-const router = express.Router();
-const fs = require("fs");
-const path = require("path");
+const router  = express.Router();
+const db      = require("../db");
 
-// Valfritt: logga till en lokal fil också
-const logFilePath = path.join(__dirname, "../checkin-log.json");
-
-// 🟢 POST /api/checkin
-router.post("/", async (req, res) => {
-  const { name, timestamp } = req.body;
-
-  if (!name || !timestamp) {
-    return res.status(400).json({ error: "Både namn och tid krävs." });
+// 1) Alla incheckningar (admin)
+router.get("/", (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Behörighet saknas" });
   }
-
-  const entry = { name, timestamp };
-
-  // Skriv till loggfil (valfritt, som lokal backup)
-  try {
-    let log = [];
-    if (fs.existsSync(logFilePath)) {
-      const data = fs.readFileSync(logFilePath);
-      log = JSON.parse(data);
+  db.all(
+    "SELECT * FROM checkins ORDER BY timestamp DESC",
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
     }
+  );
+});
 
-    log.push(entry);
-    fs.writeFileSync(logFilePath, JSON.stringify(log, null, 2));
-  } catch (err) {
-    console.error("❌ Kunde inte skriva till loggfil:", err);
+// 2) Egna incheckningar
+router.get("/me", (req, res) => {
+  const name = req.user.name;
+  db.all(
+    "SELECT * FROM checkins WHERE name = ? ORDER BY timestamp DESC",
+    [name],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+// 3) Skapa incheckning
+router.post("/", (req, res) => {
+  const { name, timestamp } = req.body;
+  if (!name || !timestamp) {
+    return res.status(400).json({ message: "Name & timestamp required" });
   }
 
-  console.log(`✅ Incheckad: ${name} vid ${timestamp}`);
-  res.status(200).json({ message: "Incheckning mottagen!", entry });
+  const dateOnly = timestamp.split("T")[0];
+  db.get(
+    "SELECT 1 FROM checkins WHERE name = ? AND DATE(timestamp) = ?",
+    [name, dateOnly],
+    (err, row) => {
+      if (err) return res.status(500).json({ message: "DB error" });
+      if (row) return res.status(400).json({ message: "Already checked in today" });
+
+      db.run(
+        "INSERT INTO checkins (name, timestamp) VALUES (?, ?)",
+        [name, timestamp],
+        function (err) {
+          if (err) return res.status(500).json({ message: "Insert error" });
+          console.log(`📌 Incheckad: ${name} @ ${timestamp}`);
+          res.json({ id: this.lastID, name, timestamp });
+        }
+      );
+    }
+  );
 });
 
 module.exports = router;

@@ -1,4 +1,4 @@
-// checkin-app/frontend/src/main.jsx
+// src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
@@ -8,42 +8,43 @@ import {
   Navigate
 } from "react-router-dom";
 
-import Login        from "./pages/Login.jsx";
-import Dashboard    from "./pages/Dashboard.jsx";
-import MyProfile    from "./pages/MyProfile.jsx";
-import PrivateRoute from "./components/PrivateRoute.jsx";
+import Login           from "./pages/Login.jsx";
+import Dashboard       from "./pages/Dashboard.jsx";
+import MyProfile       from "./pages/MyProfile.jsx";
+import AdminUsersPage  from "./pages/AdminUsersPage.jsx";
+import PrivateRoute    from "./components/PrivateRoute.jsx";
+import Layout          from "./components/Layout.jsx";
 
 import { isLoggedIn, getRole } from "./utils/auth.js";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <BrowserRouter>
+  <BrowserRouter
+    future={{
+      v7_startTransition: true,
+      v7_relativeSplatPath: true
+    }}
+  >
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
 
-      {/* All /app/* require auth */}
+      {/* Protected routes */}
       <Route element={<PrivateRoute />}>
-        {/* Employee self-view */}
-        <Route path="/app/me"        element={<MyProfile />} />
-        {/* Admin dashboard only */}
-        <Route
-          path="/app/dashboard"
-          element={
-            getRole() === "Admin"
-              ? <Dashboard />
-              : <Navigate to="/app/me" replace />
-          }
-        />
+        <Route element={<Layout />}>
+          <Route path="/app/dashboard" element={<Dashboard />} />
+          <Route path="/app/me"        element={<MyProfile />} />
+          <Route path="/app/admin/users" element={<AdminUsersPage />} />
+        </Route>
       </Route>
 
-      {/* Catch-all */}
+      {/* Fallback */}
       <Route
         path="*"
         element={
           isLoggedIn()
-            ? (getRole() === "Admin"
-                ? <Navigate to="/app/dashboard" replace />
-                : <Navigate to="/app/me"        replace />)
+            ? getRole()?.toLowerCase() === "admin"
+              ? <Navigate to="/app/dashboard" replace />
+              : <Navigate to="/app/me" replace />
             : <Navigate to="/login" replace />
         }
       />

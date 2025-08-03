@@ -1,41 +1,60 @@
 // src/components/PresentList.jsx
-import React, { useEffect, useState } from "react";
-import { fetchCheckins } from "../utils/api.js";
+import React, { useState, useEffect } from "react";
+import { getToken } from "../utils/auth.js";
 
 export default function PresentList() {
-  const [checkins, setCheckins] = useState([]);
-  const [error,    setError]    = useState("");
+  const [present, setPresent] = useState([]);
+  const [error, setError]     = useState("");
 
   useEffect(() => {
-    async function load() {
+    const fetchPresent = async () => {
       try {
-        const data = await fetchCheckins();
-        setCheckins(data);
+        const token = getToken();
+        const res = await fetch("http://localhost:8000/api/checkin", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (res.status === 401) {
+          throw new Error("Unauthorized – kontrollera din token");
+        }
+        if (!res.ok) {
+          throw new Error(`Fetch error: ${res.status}`);
+        }
+        const data = await res.json();
+        setPresent(data);
       } catch (err) {
+        console.error("Error: Couldn't fetch checkins:", err);
         setError(err.message);
       }
-    }
-    load();
+    };
+    fetchPresent();
   }, []);
 
-  if (error) return <p style={{ color: "red" }}>Error: {error}</p>;
-  if (!checkins.length) return <p>No one has checked in yet.</p>;
+  if (error) {
+    return <p style={{ color: "red" }}>Error: {error}</p>;
+  }
+
+  if (present.length === 0) {
+    return <p>Inga incheckningar än idag.</p>;
+  }
 
   return (
-    <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
+    <table className="table-auto w-full">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Name</th>
-          <th>Timestamp</th>
+          <th className="px-2 py-1 border">Namn</th>
+          <th className="px-2 py-1 border">Tid</th>
         </tr>
       </thead>
       <tbody>
-        {checkins.map(({ id, name, timestamp }) => (
-          <tr key={id}>
-            <td>{id}</td>
-            <td>{name}</td>
-            <td>{new Date(timestamp).toLocaleString()}</td>
+        {present.map((c) => (
+          <tr key={c.id}>
+            <td className="px-2 py-1 border">{c.name}</td>
+            <td className="px-2 py-1 border">
+              {new Date(c.timestamp).toLocaleTimeString()}
+            </td>
           </tr>
         ))}
       </tbody>

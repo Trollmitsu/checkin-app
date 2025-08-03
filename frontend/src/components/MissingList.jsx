@@ -1,47 +1,72 @@
 // src/components/MissingList.jsx
-import React, { useEffect, useState } from "react";
-import { fetchUsers, fetchCheckins }        from "../utils/api.js";
+import React, { useState, useEffect } from "react";
+import { getToken } from "../utils/auth.js";
 
 export default function MissingList() {
-  const [users,    setUsers]    = useState([]);
-  const [checkins, setCheckins] = useState([]);
-  const [error,    setError]    = useState("");
+  const [missing, setMissing] = useState([]);
+  const [error, setError]     = useState("");
 
   useEffect(() => {
-    async function load() {
+    const fetchMissing = async () => {
       try {
-        const [u, c] = await Promise.all([fetchUsers(), fetchCheckins()]);
-        setUsers(u);
-        setCheckins(c);
+        const token = getToken();
+
+        // 1) Hämta alla användare
+        const usersRes = await fetch("http://localhost:8000/api/users", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (usersRes.status === 401) {
+          throw new Error("Unauthorized – kontrollera din token");
+        }
+        if (!usersRes.ok) {
+          throw new Error(`Fetch users error: ${usersRes.status}`);
+        }
+        const users = await usersRes.json();
+
+        // 2) Hämta dagens incheckningar
+        const checkinRes = await fetch("http://localhost:8000/api/checkin", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (checkinRes.status === 401) {
+          throw new Error("Unauthorized – kontrollera din token");
+        }
+        if (!checkinRes.ok) {
+          throw new Error(`Fetch checkin error: ${checkinRes.status}`);
+        }
+        const checkins = await checkinRes.json();
+
+        // 3) Filtrera ut de som inte är incheckade
+        const checkedNames = new Set(checkins.map((c) => c.name));
+        const missingList  = users.filter((u) => !checkedNames.has(u.name));
+
+        setMissing(missingList);
       } catch (err) {
+        console.error("Error: Couldn't fetch users or checkins:", err);
         setError(err.message);
       }
-    }
-    load();
+    };
+    fetchMissing();
   }, []);
 
-  if (error) return <p style={{ color: "red" }}>Error: {error}</p>;
+  if (error) {
+    return <p style={{ color: "red" }}>Error: {error}</p>;
+  }
 
-  // Build a Set of names that have checked in today
-  const today = new Date().toISOString().split("T")[0];
-  const presentToday = new Set(
-    checkins
-      .filter(ci => ci.timestamp.startsWith(today))
-      .map(ci => ci.name)
-  );
-
-  // All active users who are NOT in presentToday
-  const missing = users
-    .filter(u => u.active)
-    .filter(u => !presentToday.has(u.name));
-
-  if (!missing.length) return <p>Everyone’s checked in!</p>;
+  if (missing.length === 0) {
+    return <p>Alla har checkat in!</p>;
+  }
 
   return (
     <ul>
-      {missing.map(u => (
+      {missing.map((u) => (
         <li key={u.id}>
-          {u.name} ({u.role})
+          {u.name} ({u.email})
         </li>
       ))}
     </ul>

@@ -1,35 +1,24 @@
-import React, { useState } from "react";
-import PresentList      from "./components/PresentList";
-import MissingList      from "./components/MissingList";
-import ExportCSVButton  from "./components/ExportCSVButton";
+// src/App.jsx
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-
+// Import pages
+import Dashboard from "./pages/Dashboard";
+import AdminUsersPage from "./pages/AdminUsersPage";
+// ... andra sidor
 
 export default function App() {
-  const [tab, setTab] = useState("present");
-
   return (
-    <div style={{ padding: 16 }}>
-      <h1 style={{ marginBottom: 16 }}>Admin Dashboard</h1>
+    <BrowserRouter>
+      <Routes>
+        {/* Dashboard route */}
+        <Route path="/" element={<Dashboard />} />
 
-      <div style={{ marginBottom: 16 }}>
-        <button
-          onClick={() => setTab("present")}
-          style={{ marginRight: 8 }}
-        >
-          Present
-        </button>
+        {/* Hantera anställda */}
+        <Route path="/app/admin/users" element={<AdminUsersPage />} />
 
-        <button onClick={() => setTab("missing")}>
-          Missing
-        </button>
-
-        {/* Export-knappen */}
-        <ExportCSVButton />
-      </div>
-
-      {/* Visa olika listor beroende på tab */}
-      {tab === "present" ? <PresentList /> : <MissingList />}
-    </div>
+        {/* Lägg till nya routes här */}
+      </Routes>
+    </BrowserRouter>
   );
 }

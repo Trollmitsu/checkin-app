@@ -1,16 +1,32 @@
 // src/utils/auth.js
 
-/** Get JWT token from localStorage */
+/**
+ * Hämtar sparad JWT från localStorage
+ * @returns {string|null}
+ */
 export function getToken() {
-  return localStorage.getItem("token");
+  return localStorage.getItem("jwt");
 }
 
-/** Is a user logged in? */
+/**
+ * Returnerar true om användaren är inloggad (har en JWT)
+ * @returns {boolean}
+ */
 export function isLoggedIn() {
-  return Boolean(getToken());
+  return !!getToken();
 }
 
-/** Get the current user’s role */
+/**
+ * Avkodar JWT-payload och returnerar rollen
+ * @returns {string|null}
+ */
 export function getRole() {
-  return localStorage.getItem("role");
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.role;
+  } catch {
+    return null;
+  }
 }
